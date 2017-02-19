@@ -1,6 +1,8 @@
 [submodule "scripts"]
 	path = scripts
 	url = git@gist.github.com:237ad6f8b4d5503e1a2c.git
+	branch = master
 [submodule "neovim"]
 	path = neovim
 	url = git@github.com:NelsonCrosby/-nelsonc-neovim.git
+	branch = master
