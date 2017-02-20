@@ -1,6 +1,8 @@
 
 # Aliases
 alias ls="ls -h --color=auto"
+alias ll='ls -alF'
+alias la='ls -A'
 alias temon="watch -d -t -n1 sensors"
 alias editor="$EDITOR"
 
