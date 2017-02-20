@@ -22,7 +22,7 @@ export GOPATH="$HOME/go"
 [ -d "$HOME/.npm-global" ] && export PATH="$HOME/.npm-global/bin:$PATH"
 
 # Luarocks bin
-command -v luarocks >/dev/null 2>&1 && eval $(luarocks path)
+command -v luarocks >/dev/null 2>&1 && eval $(luarocks path --bin)
 
 # User bin
 [ -d "$HOME/bin" ] && export PATH="$HOME/bin:$PATH"
