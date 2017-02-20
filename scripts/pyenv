@@ -1,0 +1,5 @@
+#!/bin/sh
+if [ -n "$1" ]; then _env="$1"; else _env='venv'; fi
+. "$_env/bin/activate"
+unset _env
+exec $SHELL

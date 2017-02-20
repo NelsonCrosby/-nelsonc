@@ -1,0 +1,5 @@
+#!/bin/sh
+set -x
+exec qemu-system-$(pwd | awk '{n=split($0,a,"-");print a[n]}') \
+  $(cat .qemu.args 2>/dev/null) \
+  "$@"

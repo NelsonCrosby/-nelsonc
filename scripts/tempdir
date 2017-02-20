@@ -1,0 +1,175 @@
+#!/bin/sh
+# This is free and unencumbered software released into the public domain.
+# For more information, please refer to <http://unlicense.org/>
+
+# NOTE: This script is _mostly_ POSIX-compliant. The only non-posix
+# thing here is `local`, which the vast majority of shells still implement
+# anyway (to my knowledge, only ksh doesn't, though that info may be out
+# of date and they may have it also).
+
+# NOTE: Trailing spaces required on empty #/ lines for -h to work
+#/ usage: tempdir [options] [actions]
+#/ 
+#/ Creates a local temporary directory in ~/temp.
+#/ 
+#/ OPTIONS:
+#/        -n <name>   Use the specified name rather than a random one.
+#/        -s <shell>  Use a different shell command.
+#/ ACTIONS:
+#/        -h          Print this help text and exit.
+#/        -p          Print a unique directory name.
+#/        -m          Make a directory and exit.
+#/        -i          Enter a directory in a new interactive shell.
+#/        -r <name>   Remove the named directory.
+#/        -R          Remove all non-kept directories.
+#/ 
+#/ Multiple actions (-pmirR) can be specified; they will be run in the given
+#/ order. Note that -r will require you to specify an argument. The default
+#/ action (if none specified) is `-mp`.
+#/ 
+#/ INTERACTIVE MODE
+#/ If -i is specified, the directory will be created and a new shell will be
+#/ started in that directory. Once the shell quits, the directory will be
+#/ automatically removed. It will not be removed if the directory contains an
+#/ entry named `.keep`. The existence of a keep file will NOT prevent -r from
+#/ removing a directory.
+
+# Don't tollerate errors unless we explicitly want to
+set -e
+
+# Generate a directory name
+_get_id () {
+  local _id=''
+  if [ -n "$1" ]; then
+    # Use a provided name for the directory instead of generating one
+    _id="$1"
+  else
+    # Generate a unique directory name
+    while [ -e "$HOME/temp/$_id" -o -z "$_id" ]; do
+      # Append two random characters
+      # Taken from https://gist.github.com/earthgecko/3089509
+      _id="$_id$(cat /dev/urandom | tr -dc 'a-z' | fold -w 2 | head -n 1)"
+    done
+  fi
+
+  echo "$_id"
+}
+
+# Create and `cd` into a given directory
+_mk_and_cd () {
+  # Ensure we are in `~/temp`
+  cd "$HOME"
+  [ -d 'temp' ] || mkdir 'temp'
+  cd 'temp'
+
+  # Create the directory passed to this function
+  [ -d "$1" ] || mkdir "$1"
+  cd "$1"
+}
+
+_rm_keep () {
+  if ! [ -e "$1/.keep" ]; then
+    # Directory does not contain `.keep`, remove it
+    rm -rf "$1"
+  fi
+}
+
+# Run an interactive shell in the CWD
+_run_interactive () {
+  set +e
+  SHELL_CTX="temp/$1" $_shell
+  set -e
+
+  cd ..
+  _rm_keep "$1"
+}
+
+_cmd_print () {
+  echo "$_dirname"
+}
+
+_cmd_mkdir () {
+  # Technically we also `cd`, but we should be in a subprocess so it won't
+  # matter.
+  _mk_and_cd "$_dirname"
+}
+
+_cmd_shell () {
+  _mk_and_cd "$_dirname"
+  _run_interactive "$_dirname"
+}
+
+_cmd_rmdir () {
+  rm -rf "$HOME/temp/$1"
+}
+
+_cmd_rmall () {
+  wd="$(pwd -L)"
+  cd "$HOME/temp"
+
+  for dir in $(ls); do
+    _rm_keep "$dir"
+  done
+
+  while ! [ -d "$wd" ]; do
+    wd="$(dirname "$wd")"
+  done
+  cd "$wd"
+}
+
+_cmd () {
+  cmd="$cmd${cmd:+; }_cmd_$*"
+}
+
+cmd=''
+_shell="$SHELL"
+# Option parsing
+while getopts ':hn:s:pmir:R' opt; do
+  case $opt in
+    h)
+      # -h: Print help
+      help="$(grep "^#/ " "$0" | cut -c 4-)"
+      echo "$help" >&2
+      exit 2
+      ;;
+    n)
+      # -n <name>: Provide a name
+      named="$OPTARG"
+      ;;
+    s)
+      # -s <shell>: Use a different shell when interacting
+      _shell="$OPTARG"
+      ;;
+    p)
+      # -p: Print a generated name
+      _cmd print
+      ;;
+    m)
+      # -m: Make the directory
+      _cmd mkdir
+      ;;
+    i)
+      # -i: Run an interactive shell
+      _cmd shell
+      ;;
+    r)
+      # -r: Remove the given directory
+      _cmd rmdir "$OPTARG"
+      ;;
+    R)
+      # -R: Remove all non-kept directories
+      _cmd rmall
+      ;;
+    \?)
+      # Unrecognized option
+      echo "Invalid option: -$OPTARG" >&2
+      ;;
+  esac
+done
+
+# Default action (if none given)
+[ -z "$cmd" ] && _cmd mkdir && _cmd print
+# Generate a directory name
+_dirname="$(_get_id "$named")"
+# Run commands
+eval "$cmd"

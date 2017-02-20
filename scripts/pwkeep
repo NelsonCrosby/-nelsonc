@@ -1,0 +1,329 @@
+#!/usr/bin/env python3
+
+import argparse
+import json
+import os
+import readline
+import shlex
+from base64 import b64encode, b64decode
+from getpass import getpass
+from io import StringIO
+
+from Crypto import Random
+from Crypto.Cipher import AES
+from Crypto.Hash import SHA512, SHA256
+import pyperclip
+
+
+DEFAULT_FILE = os.path.join(
+    os.path.expanduser('~'),
+    'Dropbox',
+    'passwords.spws'
+)
+rand = Random.new()
+
+
+def chkhash(data, hinfo):
+    if hinfo[:2] in ('00', '01'):
+        algo = SHA512
+    h = algo.new()
+    h.update(hinfo.encode())
+    if isinstance(data, str):
+        data = data.encode()
+    h.update(data)
+    digest = b64encode(h.digest())
+    return digest
+
+
+def align(s, pad='\n'):
+    return s + (pad * (16 - (len(s) % 16)))
+
+
+def pwfit(pw):
+    return pw[:32] + ('=' * (32 - len(pw)))
+
+
+def pwgen(rawpw, salt):
+    h = SHA256.new()
+    h.update(salt)
+    h.update(rawpw.encode())
+    return h.digest()
+
+
+def gensalt():
+    return rand.read(12)
+
+
+def get_newpass():
+    rawpass = None
+    salt = gensalt()
+    while not rawpass:
+        rawpass = getpass('New DB Password: ')
+        confirm = ''
+        while confirm != rawpass:
+            confirm = getpass('Confirm: ')
+            if confirm == '':
+                rawpass = None
+                break
+    return pwgen(rawpass, salt), salt
+
+
+def decrypt_file(rf, pw):
+    iv = b64decode(rf.read(24).encode())
+    pad = rf.read(1)
+    decipher = AES.new(pw, AES.MODE_CBC, iv)
+    return decipher \
+        .decrypt(b64decode(rf.read().encode())) \
+        .decode().strip(pad)
+
+
+def encrypt_file(wf, pw, data, pad='\n'):
+    iv = rand.read(16)
+    cipher = AES.new(pw, AES.MODE_CBC, iv)
+    data = cipher.encrypt(align(data, pad))
+    data = b64encode(data).decode()
+    wf.write(b64encode(iv).decode())
+    wf.write(pad)
+    wf.write(data)
+
+
+def read_db(rf):
+    dbpass = ''
+    newpass = None
+    hinfo = rf.read(10)
+    storedhash = rf.read(88).encode()
+    hinfo_ver = hinfo[:2]
+    if hinfo_ver == '00':
+        while len(dbpass) == 0 or \
+                chkhash(dbpass, hinfo) != storedhash:
+            rawpass = getpass()
+            dbpass = pwfit(rawpass)
+        salt = gensalt()
+        newpass = pwgen(rawpass, salt)
+    elif hinfo_ver == '01':
+        dbpass = ''
+        salt = b64decode(rf.read(16).encode())
+        while len(dbpass) == 0 or \
+                chkhash(dbpass, hinfo) != storedhash:
+            dbpass = pwgen(getpass(), salt)
+        newpass = dbpass
+    return json.loads(decrypt_file(rf, dbpass)), newpass, salt
+
+
+def write_db(wf, db, dbpass, dbpsalt):
+    hinfo = '01' + b64encode(rand.read(6)).decode()
+    dbhash = chkhash(dbpass, hinfo)
+    wf.write(hinfo)
+    wf.write(dbhash.decode())
+    wf.write(b64encode(dbpsalt).decode())
+    encrypt_file(wf, dbpass, json.dumps(db))
+
+
+def action_setdesc(db, args):
+    db['info']['ctxdesc'][args.ctx] = args.desc
+    return True
+
+
+def action_set(db, args):
+    pwds = db['passwords']
+    if args.ctx not in pwds:
+        db['info']['contexts'].append(args.ctx)
+        pwds[args.ctx] = {}
+    if args.name not in pwds[args.ctx]:
+        pwds[args.ctx][args.name] = {}
+    pwds[args.ctx][args.name][args.username] = pyperclip.paste()
+    return True
+
+
+def action_get(db, args):
+    it = db['passwords']
+    if args.ctx not in it:
+        print("No context '{}'".format(args.ctx))
+        return False
+    it = it[args.ctx]
+    if args.name not in it:
+        print("No service '{}' in '{}'".format(args.name, args.ctx))
+        return False
+    it = it[args.name]
+    if args.username not in it:
+        print("No user '{}' for service '{}'".format(args.username, args.name))
+    pw = it[args.username]
+    pyperclip.copy(pw)
+    print("Password for '{}' user '{}' copied to clipboard"
+          .format(args.name, args.username))
+
+
+def action_rm(db, args):
+    it = db['passwords']
+    if args.ctx not in it:
+        print("No context '{}'".format(args.ctx))
+        return False
+    it = it[args.ctx]
+    if args.name not in it:
+        print("No service '{}' in '{}'".format(args.name, args.ctx))
+        return False
+    it = it[args.name]
+    if args.username not in it:
+        print("No user '{}' for service '{}'".format(args.username, args.name))
+    pyperclip.copy(it[args.username])
+    del it[args.username]
+    print("Password for '{}' user '{}' deleted and copied to clipboard"
+          .format(args.name, args.username))
+    return True
+
+
+def action_lsa(db, args):
+    info = db['info']
+    pws = db['passwords']
+    ctxdesc = info['ctxdesc']
+    for ctx in info['contexts']:
+        if ctx in ctxdesc and ctxdesc[ctx]:
+            print("{} ({}):".format(ctxdesc[ctx], ctx))
+        else:
+            print("{}:".format(ctx))
+        ctx = pws[ctx]
+        for name in sorted(ctx.keys()):
+            for uname in sorted(ctx[name].keys()):
+                print("  {} user {}".format(name, uname))
+
+
+def action_ls(db, args):
+    info = db['info']
+    pws = db['passwords']
+    ctxdesc = info['ctxdesc']
+    if args.ctx is None:
+        for ctx in info['contexts']:
+            if ctx in ctxdesc and ctxdesc[ctx]:
+                print("{}: {}".format(ctx, ctxdesc[ctx]))
+            else:
+                print(ctx)
+    else:
+        ctx = args.ctx
+        if ctx not in pws:
+            print("No context '{}'".format(ctx))
+            return
+
+        if ctx in ctxdesc and ctxdesc[ctx]:
+            print("{} ({}):".format(ctxdesc[ctx], ctx))
+        else:
+            print("{}:".format(ctx))
+
+        ctx = pws[ctx]
+        for name in sorted(ctx.keys()):
+            for uname in sorted(ctx[name].keys()):
+                print("  {} user {}".format(name, uname))
+
+
+def action_setpass(db, args):
+    return get_newpass()
+
+
+def action_print(db, args):
+    print(db)
+
+
+def argparser():
+    ap = argparse.ArgumentParser(
+        description='A simple, encrypted, base64-encoded '
+        'password database manager.'
+    )
+    ap.add_argument('--file', default=DEFAULT_FILE,
+                    help='Use a different file')
+    ap.add_argument('--force-save', action='store_true',
+                    help='If provided, re-saves database, even if nothing '
+                    'changed. Useful for forcing a format upgrade.')
+    apsub = ap.add_subparsers()
+
+    ap_setdesc = apsub.add_parser('setdesc',
+                                  help='Set the description for a context')
+    ap_setdesc.add_argument('ctx')
+    ap_setdesc.add_argument('desc')
+    ap_setdesc.set_defaults(func=action_setdesc)
+
+    ap_set = apsub.add_parser('set', help='Set a password from the clipboard')
+    ap_set.add_argument('ctx')
+    ap_set.add_argument('name')
+    ap_set.add_argument('username')
+    ap_set.set_defaults(func=action_set)
+
+    ap_get = apsub.add_parser('get', help='Copy a password to the clipboard')
+    ap_get.add_argument('ctx')
+    ap_get.add_argument('name')
+    ap_get.add_argument('username')
+    ap_get.set_defaults(func=action_get)
+
+    ap_rm = apsub.add_parser('rm', help='Delete a password from the database')
+    ap_rm.add_argument('ctx')
+    ap_rm.add_argument('name')
+    ap_rm.add_argument('username')
+    ap_rm.set_defaults(func=action_rm)
+
+    ap_ls = apsub.add_parser('ls', help='List the stored contexts, or all '
+                             'stores within a given context')
+    ap_ls.add_argument('ctx', nargs='?', default=None)
+    ap_ls.set_defaults(func=action_ls)
+
+    ap_setpass = apsub.add_parser('newpass',
+                                  help='Change the database password')
+    ap_setpass.set_defaults(func=action_setpass)
+
+    # ap_print = apsub.add_parser('print')
+    # ap_print.set_defaults(func=action_print)
+
+    return ap, apsub
+
+
+def action_repl(db, args):
+    running = True
+    changed = False
+
+    def done(db, args):
+        nonlocal running
+        running = False
+
+    ap, apsub = argparser()
+    ap_done = apsub.add_parser('done')
+    ap_done.set_defaults(func=done)
+
+    while running:
+        args = ap.parse_args(shlex.split(input('pwkeep $ ')))
+        just_changed = args.func(db, args)
+        changed = changed or just_changed
+
+    return changed
+
+
+def main(args=None):
+    ap, apsub = argparser()
+    ap_repl = apsub.add_parser('repl')
+    ap_repl.set_defaults(func=action_repl)
+    args = ap.parse_args(args)
+
+    new = False
+    if os.path.isfile(args.file):
+        with open(args.file, 'r') as rf:
+            db, dbpass, dbpsalt = read_db(rf)
+    else:
+        new = True
+        dbpass, dbpsalt = get_newpass()
+
+        db = {
+            'info': {
+                'contexts': [],
+                'ctxdesc': {}
+            },
+            'passwords': {}
+        }
+
+    changed = args.func(db, args)
+    if isinstance(changed, tuple):
+        dbpass, dbpsalt = changed
+        changed = True
+
+    if new or changed or args.force_save:
+        with open(args.file, 'w') as wf:
+            write_db(wf, db, dbpass, dbpsalt)
+        print('DB saved')
+
+
+main()

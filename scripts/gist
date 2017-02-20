@@ -1,0 +1,14 @@
+#!/bin/bash
+
+set -e
+
+case "$1" in
+  save)
+    git add -A
+    git commit -m "$(date '+%FT%T%:z')"
+    git push
+    ;;
+  load)
+    git pull
+    ;;
+esac

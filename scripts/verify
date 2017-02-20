@@ -1,0 +1,15 @@
+#!/bin/bash
+
+set -e
+
+if [ -z "$1" ]; then
+  [ -f 'MD5SUMS' ] && md5sum -c 'MD5SUMS'
+  [ -f 'SHA256SUMS' ] && sha256sum -c 'SHA256SUMS'
+  [ -f 'SHA512SUMS' ] && sha512sum -c 'SHA512SUMS'
+else
+  [ -f 'MD5SUMS' ] && grep -F "$1" 'MD5SUMS' | md5sum -c
+  [ -f 'SHA256SUMS' ] && grep -F "$1" 'SHA256SUMS' | sha256sum -c
+  [ -f 'SHA512SUMS' ] && grep -F "$1" 'SHA512SUMS' | sha512sum -c
+fi
+
+exit 0

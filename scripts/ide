@@ -1,0 +1,16 @@
+#!/bin/sh
+
+if [ -d "$1" ]; then
+  # Directory in $1 - want to run in that dir
+  wd="$1"; shift
+
+  if [ -f "$1" ]; then
+    # Starting file relative to cwd - make relative to new dir
+    f="`realpath --relative-to="$wd" "$1"`"; shift
+    set -- "$f" "$@"
+  fi
+
+  cd "$wd"
+fi
+
+exec nvim -c 'call LoadIDEMode()' "$@"

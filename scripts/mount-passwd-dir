@@ -1,0 +1,10 @@
+#!/bin/bash
+
+set -e
+
+src="$HOME/Dropbox/crypted"
+dst="$HOME/crypted"
+
+encfs "$src" "$dst"
+
+atom "$dst"
