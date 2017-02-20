@@ -1,0 +1,5 @@
+[user]
+	name = Nelson Crosby
+	email = ncrosby@sourcecomb.com
+[core]
+	excludesfile = /home/nelsonc/.config/git/global.gitignore
