@@ -1,8 +1,0 @@
-[Desktop Entry]
-Name=Minecraft Launcher
-Comment=Launch Minecraft
-Exec=sh /home/nelsonc/bin/scripts/_run_minecraft
-Icon=/media/soft/games/DotMinecraft/favicon.png
-Terminal=true
-Type=Application
-Categories=Game;

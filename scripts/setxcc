@@ -1,5 +1,0 @@
-export CC="$1-gcc"
-export CPP="$1-cpp"
-export AS="$1-as"
-export LD="$1-ld"
-export AR="$1-ar"
