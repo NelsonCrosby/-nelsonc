@@ -13,6 +13,7 @@
 #/ Creates a local temporary directory in ~/temp.
 #/ 
 #/ OPTIONS:
+#/        -t <dir>    Use a different directory to ~/temp.
 #/        -n <name>   Use the specified name rather than a random one.
 #/        -s <shell>  Use a different shell command.
 #/ ACTIONS:
@@ -45,7 +46,7 @@ _get_id () {
     _id="$1"
   else
     # Generate a unique directory name
-    while [ -e "$HOME/temp/$_id" -o -z "$_id" ]; do
+    while [ -e "$_temp/$_id" -o -z "$_id" ]; do
       # Append two random characters
       # Taken from https://gist.github.com/earthgecko/3089509
       _id="$_id$(cat /dev/urandom | tr -dc 'a-z' | fold -w 2 | head -n 1)"
@@ -57,10 +58,9 @@ _get_id () {
 
 # Create and `cd` into a given directory
 _mk_and_cd () {
-  # Ensure we are in `~/temp`
-  cd "$HOME"
-  [ -d 'temp' ] || mkdir 'temp'
-  cd 'temp'
+  # Ensure we are in `$_temp`
+  mkdir -p "$_temp"
+  cd "$_temp"
 
   # Create the directory passed to this function
   [ -d "$1" ] || mkdir "$1"
@@ -76,9 +76,7 @@ _rm_keep () {
 
 # Run an interactive shell in the CWD
 _run_interactive () {
-  set +e
-  SHELL_CTX="temp/$1" $_shell
-  set -e
+  (set +e; SHELL_CTX="temp/$1" $_shell; exit)
 
   cd ..
   _rm_keep "$1"
@@ -100,12 +98,12 @@ _cmd_shell () {
 }
 
 _cmd_rmdir () {
-  rm -rf "$HOME/temp/$1"
+  rm -rf "$_temp/$1"
 }
 
 _cmd_rmall () {
   wd="$(pwd -L)"
-  cd "$HOME/temp"
+  cd "$_temp"
 
   for dir in $(ls); do
     _rm_keep "$dir"
@@ -122,15 +120,20 @@ _cmd () {
 }
 
 cmd=''
+_temp="$HOME/temp"
 _shell="$SHELL"
 # Option parsing
-while getopts ':hn:s:pmir:R' opt; do
+while getopts ':ht:n:s:pmir:R' opt; do
   case $opt in
     h)
       # -h: Print help
       help="$(grep "^#/ " "$0" | cut -c 4-)"
       echo "$help" >&2
       exit 2
+      ;;
+    t)
+      # -t <dir>: Provide a tempdir top
+      _temp="$(CDPATH= cd -- "$OPTARG" && pwd)"
       ;;
     n)
       # -n <name>: Provide a name
