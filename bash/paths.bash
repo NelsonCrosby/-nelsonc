@@ -5,7 +5,7 @@ export GOPATH="$HOME/go"
 [ -d "$GOPATH/go" ] && export GOROOT="$GOPATH/go"
 
 # ADK
-#export ANDROID_HOME=''
+export ANDROID_HOME="$HOME/.local/android-sdk"
 
 
 ### Executable PATH ###
