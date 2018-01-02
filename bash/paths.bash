@@ -10,6 +10,9 @@ export ANDROID_HOME="$HOME/.local/android-sdk"
 
 ### Executable PATH ###
 
+# Rust bin
+export PATH="$HOME/.cargo/bin:$PATH"
+
 # ADK bin
 [ -n "$ANDROID_HOME" -a -d "$ANDROID_HOME" ] && \
   export PATH="$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools:$PATH"
